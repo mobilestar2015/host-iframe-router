@@ -1,5 +1,3 @@
-import { UrlParser } from './url-parser';
-
 export interface MetaRoute {
 
     /** Path the meta router uses */
@@ -28,46 +26,33 @@ export class MetaRouter {
 
     additionalConfig: MetaRouterConfig = {
         hashPrefix: '/',
-        additionalHeight: 5,
+        additionalHeight: 0,
         handleNotification: () => {},
         allowedOrigins: '*'
     };
+    private route;
 
-    activatedRoute: MetaRoute;
-
-    private routes = new Array<MetaRoute>();
-
-    private urlParser = new UrlParser();
-
-    config(routes: MetaRoute[]): void { this.routes = routes; }
+    config(route: MetaRoute): void { this.route = route; }
 
     /**
      * initializes the router after configuring it
      */
     init(): void {
-        window.addEventListener('hashchange', this.routeByUrl.bind(this), false);
         window.addEventListener('message', this.handleMessage.bind(this), false);
-        if (!location.hash && this.routes && this.routes.length > 0) {
-            let defaultRoute = this.routes[0];
-            this.go(defaultRoute.path);
-        }
-        else {
-            this.routeByUrl();
+        if (this.route) {
+            this.go();
         }
 
         if (this.additionalConfig.allowedOrigins === 'same-origin') {
             this.additionalConfig.allowedOrigins = location.origin;
-          }
-    
+        }
     }
 
     /**
      * Preloads all the micro frontends by loading them into the page
      */
     preload(): void {
-        this.routes.forEach(route => {
-            this.ensureIframeCreated(route);
-        });
+        this.ensureIframeCreated();
     }
 
     /**
@@ -75,15 +60,11 @@ export class MetaRouter {
      * @param path path of the routed client app
      * @param subRoute subRoute passed to the client app
      */
-    go(path: string, subRoute?: string): void {
-        let route = this.routes.find(function(r: MetaRoute) {
-            return r.path === path;
-        });
+    go(subRoute?: string, data?: any): void {
+        if (!this.route) throw Error('route not found: ' + this.route);
 
-        if (!route) throw Error('route not found: ' + route);
-
-        this.ensureIframeCreated(route, subRoute);
-        this.activateRoute(route, subRoute);
+        this.ensureIframeCreated(subRoute);
+        this.activateRoute(subRoute, data);
     }
 
     private handleMessage(event: MessageEvent): void {
@@ -101,8 +82,7 @@ export class MetaRouter {
         }
 
         if (event.data.message === 'routed') {
-            let route = this.routes.find(r => r.path === event.data.appPath);
-            this.setRouteInHash(route, event.data.route);
+            this.additionalConfig.handleNotification('routed', '');
         } 
         else if (event.data.message === 'set-height') {
             this.resizeIframe(event.data.appPath, event.data.height);
@@ -111,14 +91,10 @@ export class MetaRouter {
             this.additionalConfig.handleNotification(event.data.tag, event.data.data);
         }
         else if (event.data.message === 'broadcast') {
-            
-            for(let route of this.routes) {
-                let iframe = this.getIframe(route);
-                if (iframe) {
-                    iframe.contentWindow.postMessage({ message: 'notification', tag: event.data.tag, data: event.data.data  }, this.additionalConfig.allowedOrigins);
-                }
+            let iframe = this.getIframe(this.route);
+            if (iframe) {
+                iframe.contentWindow.postMessage({ message: 'notification', tag: event.data.tag, data: event.data.data  }, this.additionalConfig.allowedOrigins);
             }
-            
             this.additionalConfig.handleNotification(event.data.tag, event.data.data);
         }
 
@@ -127,98 +103,42 @@ export class MetaRouter {
     private resizeIframe(appPath: string, height: number): void {
         let iframe = document.getElementById(appPath);
         if (!iframe) return;
-        let newHight = Number(height) + this.additionalConfig.additionalHeight;
-        iframe.style.height = newHight + 'px';
+        let newHeight = Number(height) + this.additionalConfig.additionalHeight;
+        if (newHeight > 0) {
+            iframe.style.height = newHeight + 'px';
+        }
     }
 
-    private ensureIframeCreated(route: MetaRoute, subRoute?: string): void {
-        if (!this.getIframe(route)) {
+    private ensureIframeCreated(subRoute?: string): void {
+        if (!this.getIframe(this.route)) {
 
             let url = '';
 
             if (subRoute) {
-                url = route.app + '#' + this.additionalConfig.hashPrefix + subRoute;
+                url = this.route.app + '#' + this.additionalConfig.hashPrefix + subRoute;
             }
             else {
-                url = route.app;
+                url = this.route.app;
             }
 
             let iframe = document.createElement('iframe');
             iframe.style['display'] = 'none';
             iframe.src = url;
-            iframe.id = route.path;
+            iframe.id = this.route.path;
             iframe.className = 'outlet-frame';
 
-            let outlet = this.getOutlet(route);
+            let outlet = this.getOutlet(this.route);
             if (!outlet) throw new Error(`outlet ${outlet} not found`);
 
             outlet.appendChild(iframe);
         }
     }
 
-    private activateRoute(routeToActivate: MetaRoute, subRoute?: string): void  {
-        let that = this;
-        this.routes.forEach(function(route) { 
-            let iframe = that.getIframe(route);
-            if (iframe && route.outlet === routeToActivate.outlet) {
-                iframe.style['display'] = route === routeToActivate ? 'block' : 'none';
-            }
-        });
-
+    private activateRoute(subRoute?: string, data?: any): void  {
         if (subRoute) {
-            let activatedIframe = this.getIframe(routeToActivate) as HTMLIFrameElement;
-            activatedIframe.contentWindow.postMessage({message: 'sub-route', route: subRoute }, this.additionalConfig.allowedOrigins );
+            let activatedIframe = this.getIframe(this.route) as HTMLIFrameElement;
+            activatedIframe.contentWindow.postMessage({message: 'sub-route', route: subRoute, data: data }, this.additionalConfig.allowedOrigins );
         }
-
-        this.setRouteInHash(routeToActivate, subRoute);
-        this.activatedRoute = routeToActivate;
-    }
-
-    private setRouteInHash(routeToActivate: MetaRoute, subRoute?: string): void {
-
-        let path = routeToActivate.path;
-
-        let currentRoutes = this.parseHash();
-
-        if (subRoute && subRoute.startsWith('/')) {
-            subRoute = subRoute.substr(1);
-        }
-
-        let hash = '';
-
-        if (subRoute) {
-             hash = path + '/' + subRoute;
-        }
-        else {
-            hash = path;
-        }
-
-        currentRoutes[routeToActivate.outlet || 'outlet'] = hash;
-
-        history.replaceState(null, null, document.location.pathname + '#' + this.persistUrl(currentRoutes));
-    }
-
-    private parseHash(): object {
-        let hash = location.hash.substr(1) + '\0';
-        return this.urlParser.parse(hash);
-    }
-
-    private persistUrl(routes: object): string {
-
-        let url = '';
-        if (routes['outlet']) {
-            url = routes['outlet'];
-        }
-
-        for (let key of Object.getOwnPropertyNames(routes)) {
-            if (key !== 'outlet') {
-                if (url) url += '//';
-                url += key + ':' + routes[key];
-            }
-        }
-
-        return url;
-
     }
 
     private getIframe(route: MetaRoute): HTMLIFrameElement {
@@ -228,21 +148,5 @@ export class MetaRouter {
     private getOutlet(route: MetaRoute): HTMLElement {
         let outlet = route.outlet || 'outlet';
         return document.getElementById(outlet) as HTMLElement;
-    }
-
-    private routeByUrl(): void {
-        if (!location.hash) return;
-        let path = location.hash.substr(1);
-        if (!path) return;
-
-        let routes = this.urlParser.parse(path);
-
-        for (let key of Object.getOwnPropertyNames(routes)) {
-            let route = routes[key];
-            let segments = route.split('/');
-            let appPath = segments[0];
-            let rest = segments.slice(1).join('/');
-            this.go(appPath, rest);
-        }
     }
 }

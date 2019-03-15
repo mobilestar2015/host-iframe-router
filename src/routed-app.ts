@@ -51,10 +51,10 @@ export class RoutedApp {
      * Registers a callback that allows the meta router to request 
      * a new route within the routed application 
     */
-    registerForRouteChange(callback: (route: string) => void): void {
+    registerForRouteChange(callback: (route: string, data?: any) => void): void {
         window.addEventListener('message', (e) => {
             if (e.data && e.data.message === 'sub-route') {
-              callback(e.data.route);
+              callback(e.data.route, e.data.data);
             }
             else if (e.data.message === 'notification' && this.childConfig.handleNotification) {
               this.childConfig.handleNotification(e.data.tag, e.data.data);

@@ -2,17 +2,11 @@ var MetaRouter = require('meta-spa-router').MetaRouter;
 
 var config = [
     {
-        path: 'a',
-        app: '/app-a/dist',
-        outlet: 'outlet'
-    },
-    {
-        path: 'b',
-        app: '/app-b/dist',
+        path: 'televet',
+        app: 'https://embrace-whitelabel.firebaseapp.com',
         outlet: 'outlet'
     }
 ];
-
 
 window.addEventListener('load', function() { 
 
@@ -25,17 +19,9 @@ window.addEventListener('load', function() {
         console.debug('received message from routed app', {tag, data});
     }
 
-
-    document.getElementById('link-a')
-            .addEventListener('click', function() { router.go('a') });
-
-    document.getElementById('link-b')
-            .addEventListener('click', function() { router.go('b') });
-
     document.getElementById('link-aa')
-            .addEventListener('click', function() { router.go('a', 'a') });
+            .addEventListener('click', function() { router.go('televet', 'pets/0/consultations/1') });
 
-            document.getElementById('link-ab')
-            .addEventListener('click', function() { router.go('a', 'b') });        
-
+    document.getElementById('link-ab')
+            .addEventListener('click', function() { router.go('televet', 'pets/0/create-consultation') });        
 }); 
