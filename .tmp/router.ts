@@ -1,5 +1,3 @@
-import { UrlParser } from './url-parser';
-
 export interface MetaRoute {
 
     /** Path the meta router uses */
@@ -33,8 +31,6 @@ export class MetaRouter {
         allowedOrigins: '*'
     };
     private route;
-
-    private urlParser = new UrlParser();
 
     config(route: MetaRoute): void { this.route = route; }
 
